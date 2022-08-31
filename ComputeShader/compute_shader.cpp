@@ -7,7 +7,7 @@
 #include <wrl.h>
 #include <cassert>
 #include <vector>
-#include "compute_shader.h"
+#include <compute_shader.h>
 
 using Microsoft::WRL::ComPtr;
 

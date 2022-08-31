@@ -5,6 +5,10 @@ VisualStudioVersion = 17.3.32611.2
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ComputeShader", "ComputeShader\ComputeShader.vcxproj", "{250720D2-034C-4D5C-AB2B-C0B4AFC88DE1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LoadTexture", "LoadTexture\LoadTexture.vcxproj", "{AB78FB17-292F-4096-8E31-009E91F87BBE}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Window", "Window\Window.vcxproj", "{3438595A-BC11-4776-A629-776848FB1022}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +19,14 @@ Global
 		{250720D2-034C-4D5C-AB2B-C0B4AFC88DE1}.Debug|x64.Build.0 = Debug|x64
 		{250720D2-034C-4D5C-AB2B-C0B4AFC88DE1}.Release|x64.ActiveCfg = Release|x64
 		{250720D2-034C-4D5C-AB2B-C0B4AFC88DE1}.Release|x64.Build.0 = Release|x64
+		{AB78FB17-292F-4096-8E31-009E91F87BBE}.Debug|x64.ActiveCfg = Debug|x64
+		{AB78FB17-292F-4096-8E31-009E91F87BBE}.Debug|x64.Build.0 = Debug|x64
+		{AB78FB17-292F-4096-8E31-009E91F87BBE}.Release|x64.ActiveCfg = Release|x64
+		{AB78FB17-292F-4096-8E31-009E91F87BBE}.Release|x64.Build.0 = Release|x64
+		{3438595A-BC11-4776-A629-776848FB1022}.Debug|x64.ActiveCfg = Debug|x64
+		{3438595A-BC11-4776-A629-776848FB1022}.Debug|x64.Build.0 = Debug|x64
+		{3438595A-BC11-4776-A629-776848FB1022}.Release|x64.ActiveCfg = Release|x64
+		{3438595A-BC11-4776-A629-776848FB1022}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
