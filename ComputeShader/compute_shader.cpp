@@ -60,6 +60,7 @@ int main()
 	hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
 	assert(SUCCEEDED(hr));
 
+#if defined(CPP_ROOT_SIGNATURE)
 	D3D12_FEATURE_DATA_ROOT_SIGNATURE feature_data = {
 		.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1
 	};
@@ -86,31 +87,11 @@ int main()
 		}
 	};
 
-	D3D12_STATIC_SAMPLER_DESC samplers[1] = {
-		{
-			.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT,
-			.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-			.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-			.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-			.MipLODBias = 0,
-			.MaxAnisotropy = 0,
-			.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER,
-			.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
-			.MinLOD = 0.0f,
-			.MaxLOD = D3D12_FLOAT32_MAX,
-			.ShaderRegister = 0,
-			.RegisterSpace = 0,
-			.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL
-		}
-	};
-
 	D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc = {
 		.Version = D3D_ROOT_SIGNATURE_VERSION_1_1,
 		.Desc_1_1 = {
 			.NumParameters = (UINT)std::size(root_parameters),
 			.pParameters = root_parameters,
-			.NumStaticSamplers = 1,
-			.pStaticSamplers = samplers,
 			.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
 		}
 	};
@@ -123,6 +104,19 @@ int main()
 	ComPtr<ID3D12RootSignature> root_signature;
 	hr = device->CreateRootSignature(0, signature_blob->GetBufferPointer(), signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature));
 	assert(SUCCEEDED(hr));
+#else
+	ComPtr<ID3D12RootSignature> root_signature;
+	hr = device->CreateRootSignature(0, g_compute_shader, std::size(g_compute_shader), IID_PPV_ARGS(&root_signature));
+	assert(SUCCEEDED(hr));
+	// test deserializer
+	{
+		ComPtr<ID3D12VersionedRootSignatureDeserializer> rootsig_deserializer;
+		hr = D3D12CreateVersionedRootSignatureDeserializer(g_compute_shader, std::size(g_compute_shader), IID_PPV_ARGS(&rootsig_deserializer));
+		assert(SUCCEEDED(hr));
+		auto rootsig_desc = rootsig_deserializer->GetUnconvertedRootSignatureDesc();
+		std::cout << "version:" << rootsig_desc->Version << std::endl;
+	}
+#endif
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC compute_desc = {
 		.pRootSignature = root_signature.Get(),
@@ -150,6 +144,55 @@ int main()
 	hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, command_allocator.Get(), pipeline_state.Get(), IID_PPV_ARGS(&command_list));
 	assert(SUCCEEDED(hr));
 
+	// constant buffer
+	struct constant_type
+	{
+		float result[4];
+		float padding[4*15];
+	};
+	constant_type constant_data = { 10.f / 255.f, 20.f / 255.f, 20.f / 255.f, 40.f / 255.f };
+
+	constexpr D3D12_HEAP_PROPERTIES upload_heap_prop = {
+		.Type = D3D12_HEAP_TYPE_UPLOAD,
+		.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+		.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+		.CreationNodeMask = 1,
+		.VisibleNodeMask = 1
+	};
+
+	D3D12_RESOURCE_DESC upload_desc = {
+		.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+		.Width = sizeof(constant_data),
+		.Height = 1,
+		.DepthOrArraySize = 1,
+		.MipLevels = 1,
+		.Format = DXGI_FORMAT_UNKNOWN,
+		.SampleDesc = {
+			.Count = 1,
+			.Quality = 0
+		},
+		.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+		.Flags = D3D12_RESOURCE_FLAG_NONE,
+	};
+
+	ComPtr<ID3D12Resource> constant_buffer;
+	hr = device->CreateCommittedResource(
+		&upload_heap_prop,
+		D3D12_HEAP_FLAG_NONE,
+		&upload_desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&constant_buffer));
+	assert(SUCCEEDED(hr));
+
+	D3D12_RANGE read_range = { 0, 0 };        // We do not intend to read from this resource on the CPU.
+	constant_type* constant_buffer_ptr;
+	hr = constant_buffer->Map(0, &read_range, reinterpret_cast<void**>(&constant_buffer_ptr));
+	assert(SUCCEEDED(hr));
+	*constant_buffer_ptr = constant_data;
+	constant_buffer->Unmap(0, &read_range);
+	
+	// texture
 	D3D12_RESOURCE_DESC texture_desc = {
 		.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
 		.Width = 4096,
@@ -219,14 +262,27 @@ int main()
 		IID_PPV_ARGS(&readback_texture));
 	assert(SUCCEEDED(hr));
 
-	ComPtr<ID3D12DescriptorHeap> uav;
-	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-	heap_desc.NumDescriptors = 1;
-	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	hr = device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&uav));
+	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {
+		.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+		.NumDescriptors = 2,
+		.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+	};
+
+	ComPtr<ID3D12DescriptorHeap> descriptor_heap;
+	hr = device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&descriptor_heap));
 	assert(SUCCEEDED(hr));
 
+	const auto descriptor_size = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	auto descriptor_handle = descriptor_heap->GetCPUDescriptorHandleForHeapStart();
+
+	// cbv
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc = {
+		.BufferLocation = constant_buffer->GetGPUVirtualAddress(),
+		.SizeInBytes = sizeof(constant_type)
+	};
+	device->CreateConstantBufferView(&cbv_desc, descriptor_handle);
+
+	// uav
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {
 		.Format = texture_desc.Format,
 		.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
@@ -235,16 +291,16 @@ int main()
 			.PlaneSlice = 0
 		}
 	};
-	device->CreateUnorderedAccessView(texture.Get(), nullptr, &uav_desc, uav->GetCPUDescriptorHandleForHeapStart());
+	descriptor_handle.ptr += descriptor_size;
+	device->CreateUnorderedAccessView(texture.Get(), nullptr, &uav_desc, descriptor_handle);
 
 	command_list->SetPipelineState(pipeline_state.Get());
 	command_list->SetComputeRootSignature(root_signature.Get());
 
-	ID3D12DescriptorHeap* uav_heaps[] = { uav.Get() };
+	ID3D12DescriptorHeap* uav_heaps[] = { descriptor_heap.Get() };
 	command_list->SetDescriptorHeaps(_countof(uav_heaps), uav_heaps);
 
-	auto uav_descriptor_size = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	command_list->SetComputeRootDescriptorTable(0, uav->GetGPUDescriptorHandleForHeapStart());
+	command_list->SetComputeRootDescriptorTable(0, descriptor_heap->GetGPUDescriptorHandleForHeapStart());
 
 	command_list->Dispatch(static_cast<UINT>(texture_desc.Width) / 32, texture_desc.Height / 32, 1);
 
@@ -300,4 +356,10 @@ int main()
 	assert(SUCCEEDED(hr));
 	buffer.assign(ptr, ptr + texture_size);
 	readback_texture->Unmap(0, nullptr);
+
+	// check
+	for (int i = 0; i < 4; ++i)
+	{
+		assert( (buffer[i] / 255.f) == constant_data.result[i] );
+	}
 }
